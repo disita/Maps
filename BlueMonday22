@@ -1,0 +1,95 @@
+# Librerias
+library("tidyverse")
+library("mxmaps")
+library("viridis")
+library("scales")
+library("leaflet")
+library("readxl")
+library("geojsonio")
+library("rgdal")
+library("rgeos")
+library("maptools")
+library("ggrepel")
+library("sf")
+library("grid")
+library("ggtext")
+
+# Datos
+data <- read_csv('data/datos.csv')
+
+# Predeterminados
+font_col <- '#FFFFFF'
+chart_font <- "Optimus Princeps"
+
+# Agregamos la variable que queremos
+df_mxstate_2020$value <- data$deprimido
+
+# Mapa
+m <- mxstate_choropleth(df_mxstate_2020,
+                        title = "Población con depresión",
+                        legend = "Depre") +
+  scale_fill_brewer(palette = "PuBu", name = "Promedio (%)", direction = 1,
+                    guide = guide_legend(order = 99)) +
+  labs(x = NULL, y = NULL, legend = "hid",
+       subtitle = "Categoría: Todo el tiempo o la mayoría del tiempo",
+       caption = commonmark::markdown_html("<b>Fuente:</b> INEGI. Encuesta Nacional de Bienestar Autorreportado (ENBIARE), 2021.<br> <b>Nota:</b> Promedio de satisfacción con la vida de la población alfabeta de 18 años <br>y más, por síntomas de depresión, según sexo y grupos de edad.")) +
+  theme_void() +
+  annotate("text", x = Inf, y = -Inf, label = "@daniel_isita",
+           hjust=1.1, vjust=-1.1, col = "#b5d6bc", cex=3,
+           fontface = "bold", alpha = 0.55) +
+  theme(plot.title = element_text(family = chart_font,
+                                  color = "#2a62b3",
+                                  size = 18, face = "bold", hjust = 0.5,
+                                  vjust = 2.5),
+        plot.subtitle = element_text(color = "#10428a",
+                                     family = chart_font,
+                                     vjust = 2.5, face = "bold",
+                                     size = 11, hjust = 0.5, margin = margin(2, 0, 5, 0)),
+        plot.caption = element_markdown(color = "black",
+                                    family = chart_font, #face = "bold",
+                                    size = 8, hjust = 0.5),
+        legend.text = element_text(color = "black", size = 11,
+                                   face = "bold"),
+        legend.title = element_text(color = "black", size = 12,
+                                    face = "bold"),
+        legend.key.size = unit(1,'lines'),
+        panel.border = element_rect(colour = "black", fill = NA, size = 3),
+        plot.margin = unit(c(0.6,1.6,1,1.6),"cm"),
+        plot.background = element_rect(fill = "white"))
+
+m
+
+# Nombres de los estados
+data("mxstate.topoJSON")
+data("df_mxstate_2020")
+
+tmpdir <- tempdir()
+
+# Necesitamos RJSONIO u otro, el topojson no es válido
+write(RJSONIO::toJSON(mxstate.topoJSON), file.path(tmpdir, "state.topojson"))
+states <- topojson_read(file.path(tmpdir, "state.topojson"))
+
+# Convertir a SpatialPolygonsDataFrame
+states <- as_Spatial(states)
+
+# Make sure the coordinates of the labels are in the correct order
+df_mxstate_2020 <- cbind(df_mxstate_2020, 
+                         data.frame(lon = coordinates(states[match(df_mxstate_2020$region, 
+                                                                   states$id),])[,1],
+                                    lat = coordinates(states[match(df_mxstate_2020$region, 
+                                                                   states$id),])[,2]))
+df_mxstate_2020$group <- df_mxstate_2020$state_abbr
+
+# Final Map
+m + geom_text_repel(data = df_mxstate_2020, 
+                    aes(lon, lat, 
+                        label = state_abbr), 
+                    fontface = "bold",
+                    size = 2.5, 
+                    # box.padding = unit(0.4, 'lines'),
+                    # arrow = arrow(length = unit(0.01, 'npc')),
+                    force = .1
+)
+
+ggsave('depre.png',
+       width = 8, height = 4.5, type = "cairo-png")
